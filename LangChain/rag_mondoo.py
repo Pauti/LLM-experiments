@@ -13,7 +13,6 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 import streamlit as st
 from wxai_langchain.llm import LangChainInterface
 from langchain_community.llms import Ollama
-import requests
 from langchain.docstore.document import Document
 from langchain.prompts import PromptTemplate
 
@@ -23,8 +22,8 @@ llm = Ollama(model="llama2:7b-chat")
 def load_mondoo():
     load_dotenv()
     # Supabase PostgreSQL connection
-    base_url = os.environ.get('SUPABASE_URL')
-    key = os.environ.get('SUPABASE_KEY')
+    base_url = os.getenv('SUPABASE_URL')
+    key = os.getenv('SUPABASE_KEY')
     supabase: Client = create_client(base_url, key)
 
     tables = [
@@ -43,19 +42,11 @@ def load_mondoo():
     with open('mondoo_data.json', 'w') as f:
         json.dump(data, f)
 
+    st.success('Mondoo data loaded successfully!')
+
     return data
-
-def periodic_load_mondoo(interval=60):
-    while True:
-        load_mondoo()
-        time.sleep(interval)
-
 # Load Mondoo data initially
 results = load_mondoo()
-
-# Start a background thread to run load_mondoo() every minute
-thread = threading.Thread(target=periodic_load_mondoo, args=(60,), daemon=True)
-thread.start()
 
 @st.cache_resource
 def extract_information(data):
