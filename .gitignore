@@ -2,3 +2,5 @@ ollama/ollama_langchain/share/man/man1
 ollama/ollama_langchain/lib
 ollama/ollama_langchain/include
 ollama/ollama_langchain/bin
+LangChain/.env
+mondoo_data.json
