@@ -3,4 +3,10 @@ ollama/ollama_langchain/lib
 ollama/ollama_langchain/include
 ollama/ollama_langchain/bin
 LangChain/.env
+LangChain/bin
+LangChain/etc
+LangChain/lib
+LangChain/share
+LangChain/pyvenv.cfg
 mondoo_data.json
+mondoo_prompt_output.txt
