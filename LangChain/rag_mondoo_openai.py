@@ -17,56 +17,67 @@ from langchain.prompts import PromptTemplate
 load_dotenv()
 openai_api_key = os.getenv('OPENAI_API_KEY')
 
-# Create LLM using ChatOpenAI for GPT-4
+# Create LLM using ChatOpenAI for GPT-3.5 Turbo
 llm = ChatOpenAI(model_name="gpt-3.5-turbo", openai_api_key=openai_api_key)
 
 def load_mondoo():
-  load_dotenv()
-  # Supabase PostgreSQL connection
-  base_url = os.getenv('SUPABASE_URL')
-  key = os.getenv('SUPABASE_KEY')
-  supabase: Client = create_client(base_url, key)
+    # Supabase PostgreSQL connection
+    base_url = os.getenv('SUPABASE_URL')
+    key = os.getenv('SUPABASE_KEY')
+    supabase: Client = create_client(base_url, key)
 
-  tables = [
-      'assets',
-      'check_result_items',
-      'mondoo_migration_locks',
-      'mondoo_migrations',
-      'query_result_items'
-  ]
+    tables = [
+        'assets',
+        'check_result_items',
+        'mondoo_migration_locks',
+        'mondoo_migrations',
+        'query_result_items'
+    ]
 
-  data = {}
-  for table in tables:
-      response = supabase.table(table).select("*").execute()
-      data[table] = response.data
+    data = {}
+    for table in tables:
+        response = supabase.table(table).select("*").execute()
+        data[table] = response.data
 
-  with open('mondoo_data.json', 'w') as f:
-      json.dump(data, f)
+    with open('mondoo_data.json', 'w') as f:
+        json.dump(data, f, indent=4)
 
-  st.success('Mondoo data loaded successfully!')
+    st.success('Mondoo data loaded successfully!')
 
-  return data
+    return data
 
 # Load Mondoo data initially
 results = load_mondoo()
 
 @st.cache_resource
 def extract_information(data):
+    documents = []
+    for table in data:
+        for item in data[table]:
+            # Extract relevant fields for document content
+            asset_name = item.get('name', 'N/A')
+            platform_name = item.get('platform', 'N/A')
+            mrn = item.get('mrn', 'N/A')
+            updated_at = item.get('updated_at', 'N/A')
+            error = item.get('error', 'N/A')
+            # Construct detailed page content
+            page_content = f"""
+            Asset Name: {asset_name}
+            Platform: {platform_name}
+            MRN: {mrn}
+            Last Updated: {updated_at}
+            Error Messages: {error}
+            """
+            documents.append(Document(page_content=page_content.strip(), metadata={"table": table}))
 
-  documents = []
-  for table in data:
-      for item in data[table]:
-          page_content = str(item)
-          documents.append(Document(page_content=page_content, metadata={"table": table}))
+    embeddings = OpenAIEmbeddings(openai_api_key=openai_api_key)
 
-  embeddings = OpenAIEmbeddings(openai_api_key=openai_api_key)
+    index = VectorstoreIndexCreator(
+        embedding=embeddings,
+        text_splitter=RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50),  # Adjusted chunk settings
+    ).from_documents(documents)
 
-  index = VectorstoreIndexCreator(
-      embedding=embeddings,
-      text_splitter=RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100),
-  ).from_documents(documents)
-
-  return index
+    return index
 
 # Create the custom prompt template
 prompt_template = """
@@ -89,7 +100,7 @@ Your task is to interpret the data and provide insights based on the following s
    - Query Data: [Data]
    - Additional Insights: [Interpretation of Data]
 
-Use this structure to provide a comprehensive analysis of each asset and its associated data.
+Make sure to analyze and provide a comprehensive breakdown for **every asset** mentioned.
 
 Context:
 {context}
@@ -97,12 +108,12 @@ Context:
 Question:
 {question}
 
-Answer in a clear and concise manner:
+Answer in a clear and concise manner to answer the question:
 """
 
 prompt = PromptTemplate(
-  template=prompt_template,
-  input_variables=["context", "question"]
+    template=prompt_template,
+    input_variables=["context", "question"]
 )
 
 # Streamlit UI
@@ -110,43 +121,45 @@ st.title("Talk to your Mondoo!")
 
 # Initialize session state variables
 if 'messages' not in st.session_state:
-  st.session_state.messages = []
+    st.session_state.messages = []
 
 # Display all historical messages
 for message in st.session_state.messages:
-  st.chat_message(message['role']).markdown(message['content'])
+    st.chat_message(message['role']).markdown(message['content'])
 
 # Load Mondoo data
 with st.spinner('Loading content...'):
-  st.session_state.results = results
+    st.session_state.results = results
 
 # User input
 prompt_text = st.text_input("Enter your question here")
 
 if prompt_text:
-  # Display user message
-  st.chat_message('user').markdown(prompt_text)
-  # Store user message in session state
-  st.session_state.messages.append({'role': 'user', 'content': prompt_text})
+    # Display user message
+    st.chat_message('user').markdown(prompt_text)
+    # Store user message in session state
+    st.session_state.messages.append({'role': 'user', 'content': prompt_text})
 
-  # Check if index is already in session state to avoid reprocessing
-  if 'index' not in st.session_state:
-      st.session_state.index = extract_information(st.session_state.results)
+    # Check if index is already in session state to avoid reprocessing
+    if 'index' not in st.session_state:
+        st.session_state.index = extract_information(st.session_state.results)
 
-  # Create the QA chain using ChatOpenAI and custom prompt
-  qa_chain = RetrievalQA.from_chain_type(
-      llm=llm,
-      chain_type='stuff',
-      retriever=st.session_state.index.vectorstore.as_retriever(),
-      chain_type_kwargs={
-          "prompt": prompt,
-          "document_variable_name": "context"
-      }
-  )
+    # Create the QA chain using ChatOpenAI and custom prompt
+    qa_chain = RetrievalQA.from_chain_type(
+        llm=llm,
+        chain_type='stuff',
+        retriever=st.session_state.index.vectorstore.as_retriever(),
+        chain_type_kwargs={
+            "prompt": prompt,
+            "document_variable_name": "context"
+        }
+    )
 
-  # Get response from LLM
-  response = qa_chain.run(prompt_text)
-  # Show assistant response
-  st.chat_message('assistant').markdown(response)
-  # Store assistant response in session state
-  st.session_state.messages.append({'role': 'assistant', 'content': response})
+    # Get response from LLM
+    response = qa_chain.run(prompt_text)
+    
+    # Show assistant response
+    st.chat_message('assistant').markdown(response)
+    
+    # Store assistant response in session state
+    st.session_state.messages.append({'role': 'assistant', 'content': response})
