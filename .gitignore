@@ -10,3 +10,7 @@ LangChain/share
 LangChain/pyvenv.cfg
 mondoo_data.json
 mondoo_prompt_output.txt
+.langchain.db
+.DS_Store
+ollama/ollama_langchain/.env
+ollama/.DS_Store
